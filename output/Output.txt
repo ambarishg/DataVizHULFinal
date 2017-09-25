@@ -1,0 +1,1 @@
+Place the AllTransactions.db here in this folder
