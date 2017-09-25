@@ -1,0 +1,970 @@
+---
+title: "MUSE – Bring Future To Talk To Legacy"
+author: "Ambarish Ganguly"
+output:
+  html_document:
+    number_sections: true
+    toc: true
+    fig_width: 10
+    code_folding: hide
+    fig_height: 4.5
+    theme: cosmo
+    highlight: tango
+---
+
+
+#Introduction
+
+We explore the data as outlined in the Table Of Contents.
+
+
+#Read the Data
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse)
+library(lubridate)
+library(forecast)
+library(DT)
+
+
+rm(list=ls())
+
+fillColor = "#FFA07A"
+fillColor2 = "#F1C40F"
+
+BusyTransactions_dump <- tibble(text = read_lines("../input/BUSY7246fb6.csv", skip = 1))
+
+BusyTransactions <- BusyTransactions_dump %>%
+  separate(text, into = c("POS_Application_Name",
+                          "STOREID",
+                          "MACID",
+                          "BILLNO",
+                          "BARCODE",
+                          "GUID",
+                          "CREATED_STAMP",
+                          "CAPTURED_WINDOW",
+                          "UPDATE_STAMP"), sep = "\\|")
+
+rm(BusyTransactions_dump)
+
+EasySOLTransactions_dump <- tibble(text = read_lines("../input/EASYSOL326dc49.csv", skip = 1))
+
+EasySOLTransactions <- EasySOLTransactions_dump %>%
+  separate(text, into = c("POS_Application_Name",
+                          "STOREID",
+                          "MACID",
+                          "BILLNO",
+                          "BARCODE",
+                          "GUID",
+                          "CREATED_STAMP",
+                          "CAPTURED_WINDOW",
+                          "UPDATE_STAMP"), sep = "\\|")
+rm(EasySOLTransactions_dump)
+
+MargTransactions_dump <- tibble(text = read_lines("../input/MARGfc72cd7.csv", skip = 1))
+
+#POS_Application_Name|STOREID|MACID|BILLNO|BARCODE|GUID|CREATED_STAMP|CAPTURED_WINDOW|UPDATE_STAMP
+
+MargTransactions <- MargTransactions_dump %>%
+  separate(text, into = c("POS_Application_Name",
+                          "STOREID",
+                          "MACID",
+                          "BILLNO",
+                          "BARCODE",
+                          "GUID",
+                          "CREATED_STAMP",
+                          "CAPTURED_WINDOW",
+                          "UPDATE_STAMP"), sep = "\\|")
+
+rm(MargTransactions_dump)
+
+RetailExPerTransactions_dump <- tibble(text = read_lines("../input/RETAIL_EXPERe490dde.csv", skip = 1))
+
+#POS_Application_Name|STOREID|MACID|BILLNO|BARCODE|GUID|CREATED_STAMP|CAPTURED_WINDOW|UPDATE_STAMP
+
+RetailExPerTransactions <- RetailExPerTransactions_dump %>%
+  separate(text, into = c("POS_Application_Name",
+                          "STOREID",
+                          "MACID",
+                          "BILLNO",
+                          "BARCODE",
+                          "GUID",
+                          "CREATED_STAMP",
+                          "CAPTURED_WINDOW",
+                          "UPDATE_STAMP"), sep = "\\|")
+
+rm(RetailExPerTransactions_dump)
+
+SoftGenTransactions_dump <- tibble(text = read_lines("../input/SOFT_GENd6661f5.csv", skip = 1))
+
+#POS_Application_Name|STOREID|MACID|BILLNO|BARCODE|GUID|CREATED_STAMP|CAPTURED_WINDOW|UPDATE_STAMP
+
+SoftGenTransactions <- SoftGenTransactions_dump %>%
+  separate(text, into = c("POS_Application_Name",
+                          "STOREID",
+                          "MACID",
+                          "BILLNO",
+                          "BARCODE",
+                          "GUID",
+                          "CREATED_STAMP",
+                          "CAPTURED_WINDOW",
+                          "UPDATE_STAMP"), sep = "\\|")
+
+rm(SoftGenTransactions_dump)
+
+AllTransactions =  rbind(BusyTransactions,EasySOLTransactions,MargTransactions,
+                         RetailExPerTransactions,SoftGenTransactions)
+
+
+ProductMaster = read.csv(file="../input/ProductMaster404b8b3.csv",stringsAsFactors = FALSE)
+
+ProductMasterDistinct = ProductMaster %>% distinct()
+
+
+```
+
+#Top 10 Brands Sold in the Stores
+
+The following plot displays the Top 10 Brands sold in the Stores.               
+
+
+```{r Top 10 Brands Sold in the Stores, message= FALSE,warning= FALSE}
+
+AllItems = AllTransactions %>%
+  left_join(ProductMasterDistinct) %>%
+  filter(BRAND_DESC != "NULL") %>%
+  filter(BRAND_DESC != "Unknown") %>%
+  group_by(BRAND_DESC) %>%
+  tally() %>%
+  arrange(desc(n)) 
+  
+
+AllItems %>%
+  ungroup() %>%
+  head(10) %>%
+  mutate(ProductCodeDesc = paste0(BRAND_DESC)) %>%
+  mutate(ProductCodeDesc = reorder(ProductCodeDesc,n))  %>%
+  ggplot(aes(x = ProductCodeDesc,y = n)) +
+  geom_bar(stat='identity',colour="white", fill =fillColor2) +
+  geom_text(aes(x = ProductCodeDesc, y = 1, label = paste0("(",n,")",sep="")),
+            hjust=0, vjust=.5, size = 4, colour = 'black',
+            fontface = 'bold') +
+  labs(x = 'ProductCodeDesc', y = 'Count of BrandSold', 
+       title = 'Count of BrandSold and ProductCode AND product Description') +
+  coord_flip() + 
+  theme_bw()
+
+```
+
+
+#Top 10 Brands With Company Code Sold in the Stores
+
+The following plot displays the Top 10 Brands sold in the Stores.               
+
+
+```{r Top 10 Brands With Company Code Sold in the Stores, message= FALSE,warning= FALSE}
+
+AllItems = AllTransactions %>%
+  left_join(ProductMasterDistinct) %>%
+  filter(BRAND_DESC != "NULL") %>%
+  filter(BRAND_DESC != "Unknown") %>%
+  group_by(BRAND_DESC,COMPANY_CODE) %>%
+  tally() %>%
+  arrange(desc(n)) 
+
+AllItems = AllItems %>%
+  mutate(COMPANY_CODE = ifelse(COMPANY_CODE == "", "NON_HUL",  COMPANY_CODE) )
+
+AllItems %>%
+  ungroup() %>%
+  head(10) %>%
+  mutate(ProductCodeDesc = paste0(BRAND_DESC)) %>%
+  mutate(ProductCodeDesc = reorder(ProductCodeDesc,n))  %>%
+  ggplot(aes(x = ProductCodeDesc,y = n,fill =COMPANY_CODE)) +
+  geom_bar(stat='identity') +
+  labs(x = 'ProductCodeDesc', y = 'Count of BrandSold', 
+       title = 'Count of Brand with Company Categorization') +
+  coord_flip() + 
+  theme_bw()
+
+```
+
+
+#Top 10 Hindustan UniLever Brands Sold in the Stores
+
+The following plot displays the Top 10 Hindustan UniLever Brands sold in the Stores.We observe that the following Brandappear in the Top 10 list                   
+
+```{r Top 10 Hindustan Lever Brands Sold in the Stores,message=FALSE,warning= FALSE}
+
+AllItems = AllTransactions %>%
+  left_join(ProductMasterDistinct) %>%
+  filter(COMPANY_CODE == "HUL") %>%
+  
+  group_by(BRAND_DESC) %>%
+  tally() %>%
+  arrange(desc(n))
+
+AllItemsTop = AllItems %>%
+  ungroup() %>%
+  head(10) %>%
+  mutate(ProductCodeDesc = BRAND_DESC) %>%
+  mutate(ProductCodeDesc = reorder(ProductCodeDesc,n))  
+
+AllItemsTop %>%
+  ggplot(aes(x = ProductCodeDesc,y = n)) +
+  geom_bar(stat='identity',colour="white", fill =fillColor) +
+  geom_text(aes(x = ProductCodeDesc, y = 1, label = paste0("(",n,")",sep="")),
+            hjust=0, vjust=.5, size = 4, colour = 'black',
+            fontface = 'bold') +
+  labs(x = 'ProductCodeDesc', y = 'Count of Brand Sold', 
+       title = 'Count of Brand Sold and ProductCode AND product Description') +
+  coord_flip() + 
+  theme_bw()
+
+```
+
+
+#Top 10 SubCategories Sold in the Stores
+
+The following plot displays the Top 10 SubCategories sold in the Stores.               
+
+
+```{r Top 10 SubCategories Sold in the Stores, message= FALSE,warning= FALSE}
+
+AllItems = AllTransactions %>%
+  left_join(ProductMasterDistinct) %>%
+  filter(SUBCATEGORY_DESC != "NULL") %>%
+  filter(SUBCATEGORY_DESC != "Unknown") %>%
+  group_by(SUBCATEGORY_DESC,COMPANY_CODE) %>%
+  tally() %>%
+  arrange(desc(n)) 
+  
+
+AllItems %>%
+  ungroup() %>%
+  head(10) %>%
+  mutate(ProductCodeDesc = paste0(SUBCATEGORY_DESC)) %>%
+  mutate(ProductCodeDesc = reorder(ProductCodeDesc,n))  %>%
+  ggplot(aes(x = ProductCodeDesc,y = n)) +
+  geom_bar(stat='identity',colour="white", fill =fillColor2) +
+  geom_text(aes(x = ProductCodeDesc, y = 1, label = paste0("(",n,")",sep="")),
+            hjust=0, vjust=.5, size = 4, colour = 'black',
+            fontface = 'bold') +
+  labs(x = 'ProductCodeDesc', y = 'Count of SubCategories Sold', 
+       title = 'Count of SubCategories Sold and ProductCode AND product Description') +
+  coord_flip() + 
+  theme_bw()
+
+```
+
+
+#Top 10 Hindustan UniLever SubCategories Sold in the Stores
+
+The following plot displays the Top 10 Hindustan UniLever SubCategories sold in the Stores.We observe that the following SubCategories appear in the Top 10 list                   
+
+```{r Top 10 Hindustan Lever SubCategories Sold in the Stores,message=FALSE,warning= FALSE}
+
+AllItems = AllTransactions %>%
+  left_join(ProductMasterDistinct) %>%
+  filter(COMPANY_CODE == "HUL") %>%
+  
+  group_by(SUBCATEGORY_DESC) %>%
+  tally() %>%
+  arrange(desc(n))
+
+AllItemsTop = AllItems %>%
+  ungroup() %>%
+  head(10) %>%
+  mutate(ProductCodeDesc = SUBCATEGORY_DESC) %>%
+  mutate(ProductCodeDesc = reorder(ProductCodeDesc,n))  
+
+AllItemsTop %>%
+  ggplot(aes(x = ProductCodeDesc,y = n)) +
+  geom_bar(stat='identity',colour="white", fill =fillColor) +
+  geom_text(aes(x = ProductCodeDesc, y = 1, label = paste0("(",n,")",sep="")),
+            hjust=0, vjust=.5, size = 4, colour = 'black',
+            fontface = 'bold') +
+  labs(x = 'ProductCodeDesc', y = 'Count of SubCategories Sold', 
+       title = 'Count of SubCategories Sold and ProductCode AND product Description') +
+  coord_flip() + 
+  theme_bw()
+
+```
+
+#Market Basket Analysis of Subcategories
+
+##Top 10 Sub Categories sold with READY MASALA
+
+
+```{r Top 10 Items sold with READY MASALA,message=FALSE,warning=FALSE}
+
+AllItems_TopProduct_1_BILLNO = 
+  AllTransactions %>% 
+  left_join(ProductMasterDistinct) %>%
+  filter(SUBCATEGORY_DESC != "NULL") %>%
+  filter(SUBCATEGORY_DESC != "Unknown") %>%
+  filter(SUBCATEGORY_DESC == "READY MASALA") %>%
+  select(BILLNO) %>%
+  distinct()
+
+AllItems_WithTopProduct_1 = AllTransactions %>% 
+  filter(BILLNO %in% AllItems_TopProduct_1_BILLNO$BILLNO )
+
+#Get all Items which are Sold With TopProduct_1
+AllItems_WithTopProduct_1Desc = AllItems_WithTopProduct_1 %>%
+  left_join(ProductMasterDistinct) %>%
+  filter(SUBCATEGORY_DESC != "Unknown") %>%
+  group_by(SUBCATEGORY_DESC) %>%
+  tally() %>%
+  arrange(desc(n))  
+  
+
+AllItems_WithTopProduct_1Desc %>%
+  ungroup() %>%
+  filter(SUBCATEGORY_DESC != "NULL") %>%
+  filter(SUBCATEGORY_DESC != "OTHERS") %>%
+  head(10) %>%
+  mutate(ProductCodeDesc = paste0(SUBCATEGORY_DESC)) %>%
+  mutate(ProductCodeDesc = reorder(ProductCodeDesc,n))  %>%
+  ggplot(aes(x = ProductCodeDesc,y = n)) +
+  geom_bar(stat='identity',colour="white", fill =fillColor) +
+  geom_text(aes(x = ProductCodeDesc, y = 1, label = paste0("(",n,")",sep="")),
+            hjust=0, vjust=.5, size = 4, colour = 'black',
+            fontface = 'bold') +
+  labs(x = 'ProductCodeDesc', y = 'Count of Items Sold', 
+       title = 'Count of SubCategory Sold and ProductCode AND product Description') +
+  coord_flip() + 
+  theme_bw()
+```
+
+#Top 10 Items Sold in the Stores
+
+The following plot displays the Top 10 items sold in the Stores.               
+
+
+```{r Top 10 Items Sold in the Stores, message= FALSE,warning= FALSE}
+
+AllItems = AllTransactions %>%
+  left_join(ProductMasterDistinct) %>%
+  filter(BASEPACK_DESC != "NA") %>%
+  filter(BASEPACK_DESC != "OTHERS") %>%
+  filter(BASEPACK_DESC != "Unknown") %>%
+  group_by(BASEPACK_DESC) %>%
+  tally() %>%
+  arrange(desc(n)) 
+  
+
+AllItems %>%
+  ungroup() %>%
+  head(10) %>%
+  mutate(ProductCodeDesc = paste0(BASEPACK_DESC)) %>%
+  mutate(ProductCodeDesc = reorder(ProductCodeDesc,n))  %>%
+  ggplot(aes(x = ProductCodeDesc,y = n)) +
+  geom_bar(stat='identity',colour="white", fill =fillColor2) +
+  geom_text(aes(x = ProductCodeDesc, y = 1, label = paste0("(",n,")",sep="")),
+            hjust=0, vjust=.5, size = 4, colour = 'black',
+            fontface = 'bold') +
+  labs(x = 'ProductCodeDesc', y = 'Count of Items Sold', 
+       title = 'Count of Items Sold and ProductCode AND product Description') +
+  coord_flip() + 
+  theme_bw()
+
+```
+
+
+#Top 10 Hindustan UniLever Items Sold in the Stores
+
+The following plot displays the Top 10 Hindustan UniLever items sold in the Stores.We observe that the following items appear in the Top 10 list                   
+           
+
+```{r Top 10 Hindustan Lever Items Sold in the Stores,message=FALSE,warning= FALSE}
+
+AllItems = AllTransactions %>%
+  left_join(ProductMasterDistinct) %>%
+  filter(COMPANY_CODE == "HUL") %>%
+  
+  group_by(BASEPACK_DESC) %>%
+  tally() %>%
+  arrange(desc(n))
+
+AllItemsTop = AllItems %>%
+  ungroup() %>%
+  head(10) %>%
+  mutate(ProductCodeDesc = BASEPACK_DESC) %>%
+  mutate(ProductCodeDesc = reorder(ProductCodeDesc,n))  
+
+AllItemsTop %>%
+  ggplot(aes(x = ProductCodeDesc,y = n)) +
+  geom_bar(stat='identity',colour="white", fill =fillColor) +
+  geom_text(aes(x = ProductCodeDesc, y = 1, label = paste0("(",n,")",sep="")),
+            hjust=0, vjust=.5, size = 4, colour = 'black',
+            fontface = 'bold') +
+  labs(x = 'ProductCodeDesc', y = 'Count of Items Sold', 
+       title = 'Count of Items Sold and ProductCode AND product Description') +
+  coord_flip() + 
+  theme_bw()
+
+```
+
+#Top 10 NON Hindustan UniLever Items Sold in the Stores
+
+We investigate the Top Ten NON Hindustan UniLever Items Sold in the Stores. Products involving Face, Tea, Oil , Water and Soap feature among the most popular items.           
+
+
+```{r Top 10 NON Hindustan Lever Items Sold in the Stores ,message=FALSE,warning=FALSE}
+
+
+AllItems = AllTransactions %>%
+  left_join(ProductMasterDistinct) %>%
+  filter(COMPANY_CODE == "NON_HUL") %>%
+  
+  group_by(BASEPACK_DESC) %>%
+  tally() %>%
+  arrange(desc(n))
+
+AllItems %>%
+  ungroup() %>%
+  head(10) %>%
+  mutate(ProductCodeDesc = paste0(BASEPACK_DESC)) %>%
+  mutate(ProductCodeDesc = reorder(ProductCodeDesc,n))  %>%
+  ggplot(aes(x = ProductCodeDesc,y = n)) +
+  geom_bar(stat='identity',colour="white", fill =fillColor2) +
+  geom_text(aes(x = ProductCodeDesc, y = 1, label = paste0("(",n,")",sep="")),
+            hjust=0, vjust=.5, size = 4, colour = 'black',
+            fontface = 'bold') +
+  labs(x = 'ProductCodeDesc', y = 'Count of Items Sold', 
+       title = 'Count of Items Sold and ProductCode AND product Description') +
+  coord_flip() + 
+  theme_bw()
+
+
+```
+
+#Market Basket Analysis of Items
+
+##Top 10 Items sold with VIM LIQUID YELLOW BOTTLE 750 ML
+
+**VIM LIQUID YELLOW BOTTLE 750 ML** is the MOST **Popular** HUL product. We wish to examine the products which have been bought with **VIM LIQUID YELLOW BOTTLE 750 ML**. We observe the followng products are bought with VIM LIQUID YELLOW BOTTLE 750 ML           
+
+    
+
+
+```{r Top 10 Items sold with VIM LIQUID YELLOW BOTTLE 750 ML,message=FALSE,warning=FALSE}
+
+AllItems_TopProduct_1_BILLNO = 
+  AllTransactions %>% 
+  left_join(ProductMasterDistinct) %>%
+  filter(BASEPACK_DESC != "Unknown") %>%
+  filter(BASEPACK_DESC == "VIM LIQUID YELLOW BOTTLE 750ML") %>%
+  select(BILLNO) %>%
+  distinct()
+
+AllItems_WithTopProduct_1 = AllTransactions %>% 
+  filter(BILLNO %in% AllItems_TopProduct_1_BILLNO$BILLNO )
+
+#Get all Items which are Sold With TopProduct_1
+AllItems_WithTopProduct_1Desc = AllItems_WithTopProduct_1 %>%
+  left_join(ProductMasterDistinct) %>%
+  filter(BASEPACK_DESC != "Unknown") %>%
+  group_by(BASEPACK_DESC) %>%
+  tally() %>%
+  arrange(desc(n))  
+  
+
+AllItems_WithTopProduct_1Desc %>%
+  ungroup() %>%
+  filter(BASEPACK_DESC != "OTHERS") %>%
+  head(10) %>%
+  mutate(ProductCodeDesc = paste0(BASEPACK_DESC)) %>%
+  mutate(ProductCodeDesc = reorder(ProductCodeDesc,n))  %>%
+  ggplot(aes(x = ProductCodeDesc,y = n)) +
+  geom_bar(stat='identity',colour="white", fill =fillColor) +
+  geom_text(aes(x = ProductCodeDesc, y = 1, label = paste0("(",n,")",sep="")),
+            hjust=0, vjust=.5, size = 4, colour = 'black',
+            fontface = 'bold') +
+  labs(x = 'ProductCodeDesc', y = 'Count of Items Sold', 
+       title = 'Count of Items Sold and ProductCode AND product Description') +
+  coord_flip() + 
+  theme_bw()
+
+
+```
+
+
+##Top 10 Hindustan UniLever Items sold with VIM LIQUID YELLOW BOTTLE 750 ML
+
+We wish to examine the Hindustan UniLever products which have been bought with **Nil Mineral Bar 800g**. We observe the followng products are bought with VIM LIQUID YELLOW BOTTLE 750 ML           
+
+                             
+
+```{r Top 10 Hindustan UniLever Items sold with VIM LIQUID YELLOW BOTTLE 750 ML ,message=FALSE,warning=FALSE}
+
+AllItems_TopProduct_1_BILLNO = 
+  AllTransactions %>% 
+  left_join(ProductMasterDistinct) %>%
+  filter(COMPANY_CODE == "HUL") %>%
+  filter(BASEPACK_DESC != "NA") %>%
+  filter(BASEPACK_DESC != "OTHERS") %>%
+  filter(BASEPACK_DESC != "Unknown") %>%
+  filter(BASEPACK_DESC == "VIM LIQUID YELLOW BOTTLE 750ML") %>%
+  select(BILLNO) %>%
+  distinct()
+
+AllItems_WithTopProduct_1 = AllTransactions %>% 
+  filter(BILLNO %in% AllItems_TopProduct_1_BILLNO$BILLNO )
+
+#Get all Items which are Sold With TopProduct_1
+AllItems_WithTopProduct_1Desc = AllItems_WithTopProduct_1 %>%
+  left_join(ProductMasterDistinct) %>%
+  filter(COMPANY_CODE == "HUL") %>%
+  filter(BASEPACK_DESC != "NA") %>%
+  filter(BASEPACK_DESC != "OTHERS") %>%
+  filter(BASEPACK_DESC != "Unknown") %>%
+  group_by(BASEPACK_DESC) %>%
+  tally() %>%
+  arrange(desc(n))  
+  
+
+AllItems_WithTopProduct_1Desc %>%
+  ungroup() %>%
+   head(10) %>%
+  mutate(ProductCodeDesc = paste0(BASEPACK_DESC)) %>%
+  mutate(ProductCodeDesc = reorder(ProductCodeDesc,n))  %>%
+  ggplot(aes(x = ProductCodeDesc,y = n)) +
+  geom_bar(stat='identity',colour="white", fill =fillColor) +
+  geom_text(aes(x = ProductCodeDesc, y = 1, label = paste0("(",n,")",sep="")),
+            hjust=0, vjust=.5, size = 4, colour = 'black',
+            fontface = 'bold') +
+  labs(x = 'ProductCodeDesc', y = 'Count of Items Sold', 
+       title = 'Count of Items Sold and ProductCode AND product Description') +
+  coord_flip() + 
+  theme_bw()
+
+
+```
+
+##Top 10 Items sold with Nil Mineral Bar 800g
+
+We wish to examine the products which have been bought with **Nil Mineral Bar 800g**. We observe the followng products are bought with Nil Mineral Bar 800g                    
+
+     
+
+```{r Top 10 Items sold with Nil Mineral Bar 800g,message=FALSE,warning=FALSE}
+
+AllItems_TopProduct_1_BILLNO = 
+  AllTransactions %>% 
+  left_join(ProductMasterDistinct) %>%
+  filter(BASEPACK_DESC == "Nil Mineral Bar 800g") %>%
+  select(BILLNO) %>%
+  distinct()
+
+AllItems_WithTopProduct_1 = AllTransactions %>% 
+  filter(BILLNO %in% AllItems_TopProduct_1_BILLNO$BILLNO )
+
+#Get all Items which are Sold With TopProduct_1
+AllItems_WithTopProduct_1Desc = AllItems_WithTopProduct_1 %>%
+  left_join(ProductMasterDistinct) %>%
+  filter(BASEPACK_DESC != "NA") %>%
+  filter(BASEPACK_DESC != "OTHERS") %>%
+  filter(BASEPACK_DESC != "Unknown") %>%
+  group_by(BASEPACK_DESC) %>%
+  tally() %>%
+  arrange(desc(n))
+  
+
+AllItems_WithTopProduct_1Desc %>%
+  ungroup() %>%
+  filter(BASEPACK_DESC != "OTHERS") %>%
+  head(10) %>%
+  mutate(ProductCodeDesc = paste0(BASEPACK_DESC)) %>%
+  mutate(ProductCodeDesc = reorder(ProductCodeDesc,n))  %>%
+  ggplot(aes(x = ProductCodeDesc,y = n)) +
+  geom_bar(stat='identity',colour="white", fill =fillColor2) +
+  geom_text(aes(x = ProductCodeDesc, y = 1, label = paste0("(",n,")",sep="")),
+            hjust=0, vjust=.5, size = 4, colour = 'black',
+            fontface = 'bold') +
+  labs(x = 'ProductCodeDesc', y = 'Count of Items Sold', 
+       title = 'Count of Items Sold and ProductCode AND product Description') +
+  coord_flip() + 
+  theme_bw()
+
+
+```
+
+
+##Top 10 Hindustan UniLever Items sold with Nil Mineral Bar 800g
+
+We wish to examine the Hindustan UniLever products which have been bought with **Nil Mineral Bar 800g**. We observe the followng products are bought with  Nil Mineral Bar 800g          
+
+           
+
+
+```{r Top 10 Hindustan UniLever Items sold with Nil Mineral Bar 800g ,message=FALSE,warning=FALSE}
+
+AllItems_TopProduct_1_BILLNO = 
+  AllTransactions %>% 
+  left_join(ProductMasterDistinct) %>%
+  filter(COMPANY_CODE == "HUL") %>%
+  filter(BASEPACK_DESC != "NA") %>%
+  filter(BASEPACK_DESC != "OTHERS") %>%
+  filter(BASEPACK_DESC != "Unknown") %>%
+  filter(BASEPACK_DESC == "Nil Mineral Bar 800g") %>%
+  select(BILLNO) %>%
+  distinct()
+
+AllItems_WithTopProduct_1 = AllTransactions %>% 
+  filter(BILLNO %in% AllItems_TopProduct_1_BILLNO$BILLNO )
+
+#Get all Items which are Sold With TopProduct_1
+AllItems_WithTopProduct_1Desc = AllItems_WithTopProduct_1 %>%
+  left_join(ProductMasterDistinct) %>%
+  filter(BASEPACK_DESC != "NA") %>%
+  filter(BASEPACK_DESC != "OTHERS") %>%
+  filter(BASEPACK_DESC != "Unknown") %>%
+  filter(COMPANY_CODE == "HUL") %>%
+  group_by(BASEPACK_DESC) %>%
+  tally() %>%
+  arrange(desc(n))
+  
+
+AllItems_WithTopProduct_1Desc %>%
+  ungroup() %>%
+  head(10) %>%
+  mutate(ProductCodeDesc = paste0(BASEPACK_DESC)) %>%
+  mutate(ProductCodeDesc = reorder(ProductCodeDesc,n))  %>%
+  ggplot(aes(x = ProductCodeDesc,y = n)) +
+  geom_bar(stat='identity',colour="white", fill =fillColor2) +
+  geom_text(aes(x = ProductCodeDesc, y = 1, label = paste0("(",n,")",sep="")),
+            hjust=0, vjust=.5, size = 4, colour = 'black',
+            fontface = 'bold') +
+  labs(x = 'ProductCodeDesc', y = 'Count of Items Sold', 
+       title = 'Count of Items Sold and ProductCode AND product Description') +
+  coord_flip() + 
+  theme_bw()
+
+
+
+```
+
+#Top Stores selling the MOST goods
+
+```{r, Top Stores selling the MOST goods, message= FALSE,warning=FALSE}
+
+AllTransactions %>% 
+  group_by(STOREID) %>%
+  tally() %>%
+  arrange(desc(n)) %>%
+  head(10) %>%
+  ungroup() %>%
+  mutate(STOREID = reorder(STOREID,n))  %>%
+  
+  ggplot(aes(x = STOREID,y = n)) +
+  geom_bar(stat='identity',colour="white", fill =fillColor2) +
+  geom_text(aes(x = STOREID, y = 1, label = paste0("(",n,")",sep="")),
+            hjust=0, vjust=.5, size = 4, colour = 'black',
+            fontface = 'bold') +
+  labs(x = 'Store ID', y = 'Count of Items Sold', 
+       title = 'Count of Items Sold and Stores') +
+  coord_flip() + 
+  theme_bw()
+
+
+```
+
+# Stores selling the LEAST goods
+
+```{r Stores selling the LEAST goods, message= FALSE,warning=FALSE}
+
+AllTransactions %>% 
+  group_by(STOREID) %>%
+  tally() %>%
+  arrange(desc(n)) %>%
+  tail(10) %>%
+  ungroup() %>%
+  mutate(STOREID = reorder(STOREID,n))  %>%
+  
+  ggplot(aes(x = STOREID,y = n)) +
+  geom_bar(stat='identity',colour="white", fill =fillColor) +
+  geom_text(aes(x = STOREID, y = 1, label = paste0("(",n,")",sep="")),
+            hjust=0, vjust=.5, size = 4, colour = 'black',
+            fontface = 'bold') +
+  labs(x = 'Store ID', y = 'Count of Items Sold', 
+       title = 'Count of Items Sold and Stores') +
+  coord_flip() + 
+  theme_bw()
+
+
+```
+
+
+#Perform Date Manipulations
+
+```{r,message=FALSE,warning=FALSE}
+
+#Week
+AllTransactions$CREATED_STAMP = as.Date(AllTransactions$CREATED_STAMP)
+
+AllTransactions$CREATED_STAMP_Week = week(ymd(AllTransactions$CREATED_STAMP))
+
+```
+
+#Trend of Sales of Nil Mineral Bar 800g
+
+The trend of sales of **Nil Mineral Bar 800g** is being shown.
+
+```{r,message=FALSE,warning=FALSE}
+
+AllItems_TopProduct_1_Week = 
+  AllTransactions %>% 
+  filter(BARCODE == "8901030341663") %>%
+  group_by(CREATED_STAMP_Week) %>%
+  tally() 
+
+breaks = seq(1,15,1)
+
+AllItems_TopProduct_1_Week %>%
+  ggplot(aes(x=CREATED_STAMP_Week,y=n)) + 
+  
+  scale_x_continuous(limits = c(1, 15),breaks=breaks ) +
+  
+  geom_line(size=.5, color="red")+geom_point(size=2, color="red")+theme_bw()
+  
+
+```
+
+The sales jump in the weeks **2, 6 and 10**.
+
+#Trend of Sales of KISSAN FRESH TOMATO KETCHUP DOY PACK 1Kg
+
+```{r,message=FALSE,warning=FALSE}
+
+AllItems_TopProduct_1_Week = 
+  AllTransactions %>% 
+  filter(BARCODE == "8901030534898") %>%
+  group_by(CREATED_STAMP_Week) %>%
+  tally() 
+
+breaks = seq(1,15,1)
+
+AllItems_TopProduct_1_Week %>%
+  ggplot(aes(x=CREATED_STAMP_Week,y=n)) + 
+  
+  scale_x_continuous(limits = c(1, 15),breaks=breaks ) +
+  
+  geom_line(size=.5, color="red")+geom_point(size=2, color="red")+theme_bw()
+
+```
+
+The sales jump in the weeks **6 and 8**.               
+
+
+#Top 10 Hindustan Lever Items Sold in the Store DEL0000000005
+
+```{r Top 10 Hindustan Lever Items Sold in the Store DEL0000000005,message=FALSE,warning= FALSE}
+
+AllItemsTopDELX = AllTransactions %>%
+  filter(STOREID == "DEL0000000005")  %>%
+  group_by(BARCODE) %>%
+  tally() %>%
+  arrange(desc(n)) %>% 
+  left_join(ProductMasterDistinct)  %>%
+  mutate(ProductCodeDesc = BASEPACK_DESC) %>%
+  mutate(ProductCodeDesc = reorder(ProductCodeDesc,n))  
+
+AllItemsTopDELX %>%
+  filter(COMPANY_CODE == "HUL") %>%
+  head(10) %>%
+  ggplot(aes(x = ProductCodeDesc,y = n)) +
+  geom_bar(stat='identity',colour="white", fill =fillColor) +
+  geom_text(aes(x = ProductCodeDesc, y = 1, label = paste0("(",n,")",sep="")),
+            hjust=0, vjust=.5, size = 4, colour = 'black',
+            fontface = 'bold') +
+  labs(x = 'ProductCodeDesc', y = 'Count of Items Sold', 
+       title = 'Count of Items Sold and ProductCode AND product Description') +
+  coord_flip() + 
+  theme_bw()
+
+```
+
+#Trend of Sales of Nil Mineral Bar 800g sold in DEL0000000005
+
+```{r,message=FALSE,warning=FALSE}
+
+AllItems_TopProduct_1_WeekDELX = 
+  AllTransactions %>% 
+  filter(BARCODE == "8901030341663") %>%
+  filter(STOREID == "DEL0000000005")  %>%
+  group_by(CREATED_STAMP_Week) %>%
+  tally() 
+
+breaks = seq(1,15,1)
+
+AllItems_TopProduct_1_WeekDELX %>%
+  ggplot(aes(x=CREATED_STAMP_Week,y=n)) + 
+  scale_x_continuous(limits = c(4, 13),breaks=breaks ) +
+  geom_line(size=.5, color="red")+geom_point(size=2, color="red")+theme_bw()
+  
+
+```
+
+#Forecasting of Nil Mineral Bar 800g sold in DEL0000000005{.tabset} 
+
+
+## Forecasting using ARIMA
+
+The forecasting of the product is done through ARIMA (Autoregressive integrated moving average method)          
+
+```{r message= FALSE,warning= FALSE}
+
+CountOfItems = ts(AllItems_TopProduct_1_WeekDELX$n)
+
+fit = auto.arima(CountOfItems,stepwise=FALSE, approximation=FALSE)
+
+predictions = fit %>% forecast(h=4)
+
+predictions %>% autoplot(include=10) +theme_bw()
+
+```
+
+The predictions for Weeks 14, 15, 16 and 17 using ARIMA are shown here.     
+
+```{r, result='asis', echo=FALSE}
+
+predictionsValues = as.numeric(predictions$mean)
+
+dataSetItems = data.frame(Month = as.character(), ItemCount = as.numeric())
+
+dataSetWeeks = data.frame(c("Week 14",
+                             "Week 15",
+                             "Week 16",
+                             "Week 17"))
+
+dataSetItems = cbind(dataSetWeeks,round(predictionsValues))
+
+colnames(dataSetItems) = c("Weeks","Predictions")
+
+datatable(dataSetItems, style="bootstrap", class="table-condensed", options = list(dom = 'tp',scrollX = TRUE))
+
+```
+
+## Forecasting using ETS
+
+The forecasting of the product is done through ETS (Exponential Time Series)       
+
+
+```{r message= FALSE,warning= FALSE}
+
+CountOfItems = ts(AllItems_TopProduct_1_WeekDELX$n)
+
+fit = ets(CountOfItems)
+
+predictions = fit %>% forecast(h=4)
+
+predictions %>% autoplot(include=10) +theme_bw()
+
+```
+
+The predictions for Weeks 14, 15, 16 and 17 using ETS are shown here.     
+
+```{r, result='asis', echo=FALSE}
+
+predictionsValues = as.numeric(predictions$mean)
+
+dataSetItems = data.frame(Month = as.character(), ItemCount = as.numeric())
+
+dataSetWeeks = data.frame(c("Week 14",
+                             "Week 15",
+                             "Week 16",
+                             "Week 17"))
+
+dataSetItems = cbind(dataSetWeeks,round(predictionsValues))
+
+colnames(dataSetItems) = c("Weeks","Predictions")
+
+datatable(dataSetItems, style="bootstrap", class="table-condensed", options = list(dom = 'tp',scrollX = TRUE))
+
+```
+
+#Forecasting of KISSAN FRESH TOMATO KETCHUP DOY PACK 1Kg sold in DEL0000000005{.tabset} 
+
+
+## Forecasting using ARIMA
+
+The forecasting of the product is done through ARIMA (Autoregressive integrated moving average method)
+
+```{r message= FALSE,warning= FALSE}
+
+AllItems_TopProduct_1_WeekDELX = 
+  AllTransactions %>% 
+  filter(BARCODE == "8901030534898") %>%
+  filter(STOREID == "DEL0000000005")  %>%
+  group_by(CREATED_STAMP_Week) %>%
+  tally() 
+
+CountOfItems = ts(AllItems_TopProduct_1_WeekDELX$n)
+
+fit = auto.arima(CountOfItems,stepwise=FALSE, approximation=FALSE)
+
+predictions = fit %>% forecast(h=4)
+
+predictions %>% autoplot(include=10) +theme_bw()
+
+```
+
+The predictions for Weeks 14, 15, 16 and 17 using ARIMA are shown here.     
+
+```{r, result='asis', echo=FALSE}
+
+predictionsValues = as.numeric(predictions$mean)
+
+dataSetItems = data.frame(Month = as.character(), ItemCount = as.numeric())
+
+dataSetWeeks = data.frame(c("Week 14",
+                             "Week 15",
+                             "Week 16",
+                             "Week 17"))
+
+dataSetItems = cbind(dataSetWeeks,round(predictionsValues))
+
+colnames(dataSetItems) = c("Weeks","Predictions")
+
+datatable(dataSetItems, style="bootstrap", class="table-condensed", options = list(dom = 'tp',scrollX = TRUE))
+
+```
+
+## Forecasting using ETS
+
+The forecasting of the product is done through ETS (Exponential Time Series)
+
+```{r message= FALSE,warning= FALSE}
+
+CountOfItems = ts(AllItems_TopProduct_1_WeekDELX$n)
+
+fit = ets(CountOfItems)
+
+predictions = fit %>% forecast(h=4)
+
+predictions %>% autoplot(include=10) +theme_bw()
+
+```
+
+The predictions for Weeks 14, 15, 16 and 17 using ETS are shown here.     
+
+```{r, result='asis', echo=FALSE}
+
+predictionsValues = as.numeric(predictions$mean)
+
+dataSetItems = data.frame(Month = as.character(), ItemCount = as.numeric())
+
+dataSetWeeks = data.frame(c("Week 14",
+                             "Week 15",
+                             "Week 16",
+                             "Week 17"))
+
+dataSetItems = cbind(dataSetWeeks,round(predictionsValues))
+
+colnames(dataSetItems) = c("Weeks","Predictions")
+
+datatable(dataSetItems, style="bootstrap", class="table-condensed", options = list(dom = 'tp',scrollX = TRUE))
+
+```
